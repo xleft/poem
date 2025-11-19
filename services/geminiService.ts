@@ -1,3 +1,4 @@
+
 import { Poem, KeywordCard, PoetLetter, Language } from "../types";
 
 // --- CONFIGURATION ---
@@ -15,7 +16,7 @@ const getEnv = (key: string): string => {
 const API_KEY = getEnv("VITE_API_KEY");
 // Use the base domain provided by the user
 const RAW_BASE_URL = getEnv("VITE_API_BASE_URL") || "https://api.openai-hk.com";
-// Remove trailing slash and ensure we don't have subpaths like /google or /v1 yet
+// Clean the URL: remove trailing slash, remove /google, remove /v1 (we append /v1 manually)
 const BASE_URL = RAW_BASE_URL.replace(/\/$/, "").replace(/\/google$/, "").replace(/\/v1$/, "");
 
 console.log("Gemini Service (OpenAI-HK Mode):", { hasKey: !!API_KEY, baseUrl: BASE_URL });
@@ -27,18 +28,21 @@ async function callOpenAICompatibleAPI(messages: any[], schemaDescription?: stri
   const url = `${BASE_URL}/v1/chat/completions`;
 
   // Explicitly ask for JSON in the system prompt to ensure parsing works
+  // We emphasize NO markdown to avoid parsing errors since we removed response_format
   const systemMessage = {
     role: "system",
     content: `You are a helpful assistant. 
     ${schemaDescription ? `You must output valid JSON strictly following this structure: ${schemaDescription}` : "Output valid JSON."}
-    Do not include markdown formatting (like \`\`\`json). Just return the raw JSON string.`
+    IMPORTANT: Do not include markdown formatting (like \`\`\`json ... \`\`\`). Just return the raw JSON string.
+    Do not include any conversational text outside the JSON.`
   };
 
   const body = {
     model: "gemini-1.5-flash", // OpenAI-HK supports this model name via their OpenAI interface
     messages: [systemMessage, ...messages],
-    temperature: 1.0,
-    response_format: { type: "json_object" } // Force JSON mode
+    temperature: 0.7, // Lower temperature slightly for more stable JSON structure
+    // REMOVED: response_format: { type: "json_object" } 
+    // Reason: Many third-party Gemini proxies do not strictly support this OpenAI-specific parameter and will error out.
   };
 
   const response = await fetch(url, {
@@ -52,16 +56,20 @@ async function callOpenAICompatibleAPI(messages: any[], schemaDescription?: stri
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error("API Error Details:", errorText);
+    console.error("API Error Details:", response.status, errorText);
     throw new Error(`API Request Failed: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
   const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
+  let text = data.choices?.[0]?.message?.content;
   
   if (!text) {
     throw new Error("No content in response");
   }
+
+  // Clean up potential markdown formatting if the model ignores instructions
+  // (e.g. removes ```json ... ``` wrappers)
+  text = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
 
   return text;
 }
@@ -106,7 +114,7 @@ export const recommendPoem = async (userFeeling: string, language: Language): Pr
             author: "系统",
             dynasty: "当今",
             content: ["网络连接异常", "请检查API配置", "或稍后再试"],
-            analysis: errorMsg.includes("401") ? "API Key无效" : "AI连接失败，请检查Vercel配置。",
+            analysis: errorMsg.includes("401") ? "API Key无效" : `连接失败: ${errorMsg.substring(0, 50)}...`,
             context: "系统提示",
             language: 'zh'
         };
