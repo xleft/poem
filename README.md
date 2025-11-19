@@ -1,20 +1,43 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 诗隐 Shi Yin - Poetry Hermit
 
-# Run and deploy your AI Studio app
+> 墨韵流转，意会古今。
+> Ink & Soul, Timeless Echoes.
 
-This contains everything you need to run your app locally.
+A traditional Chinese ink-wash style application that matches your mood to Tang/Song poetry, explores cultural keywords, and enables conversation with ancient poets.
 
-View your app in AI Studio: https://ai.studio/apps/drive/12sCzYCrVkCeW3JNEXeF_0vahfhxXNwQ2
+## Features
 
-## Run Locally
+*   **Mood to Poem**: Enter your feelings to find a matching Tang/Song poem or Western classic.
+*   **Cultural Immersion**: "Ink Wash" UI design with fluid animations.
+*   **Deep Analysis**: Explore keywords (Geography, Phenology, Customs) within the poems.
+*   **Poet Correspondence**: Receive personalized letters from ancient poets based on your mood.
+*   **Collection**: Save your favorite poems, keywords, and letters.
+*   **Dual Language**: Full support for Chinese (Classic Poetry) and English (Western Poetry).
 
-**Prerequisites:**  Node.js
+## Setup
 
+1.  Clone the repository.
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+3.  Set up Environment Variables:
+    Create a `.env` file in the root directory and add your Google Gemini API Key:
+    ```env
+    VITE_API_KEY=your_google_gemini_api_key_here
+    ```
+4.  Run the development server:
+    ```bash
+    npm run dev
+    ```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Tech Stack
+
+*   React + TypeScript
+*   Vite
+*   Tailwind CSS
+*   Google Gemini API (@google/genai)
+
+## License
+
+MIT
