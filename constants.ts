@@ -1,4 +1,3 @@
-
 export const APP_NAME = "诗隐";
 export const SUBTITLE = "Shi Yin";
 

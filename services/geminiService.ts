@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Poem, KeywordCard, PoetLetter, Language } from "../types";
 
