@@ -1,12 +1,42 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Poem, KeywordCard, PoetLetter, Language } from "../types";
 
+// --- CONFIGURATION ---
+
+// Helper function to safely access environment variables
+// This prevents crashes if import.meta.env is undefined in certain environments
+const getEnv = (key: string): string => {
+  try {
+    // Check Vite standard
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+      return import.meta.env[key];
+    }
+    // Check Legacy/Node standard (fallback)
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key] || "";
+    }
+  } catch (e) {
+    console.warn("Error accessing environment variable:", key, e);
+  }
+  return "";
+};
+
+const API_KEY = getEnv("VITE_API_KEY");
+const BASE_URL = getEnv("VITE_API_BASE_URL") || "https://generativelanguage.googleapis.com";
+
+// Debug logging to help verify configuration in browser console (safely masks key)
+console.log("Gemini Service Init:", { 
+  hasKey: !!API_KEY, 
+  baseUrl: BASE_URL,
+  keyLength: API_KEY ? API_KEY.length : 0
+});
+
 // Initialize Gemini Client
-// We use 'as any' to bypass TypeScript checking for baseUrl if the SDK definition is outdated,
-// ensuring we can connect to the third-party proxy.
+// We cast configuration to 'any' to avoid TypeScript errors if the SDK type definition 
+// is stricter than the runtime support for 'baseUrl'.
 const ai = new GoogleGenAI({ 
-  apiKey: process.env.API_KEY,
-  baseUrl: process.env.VITE_API_BASE_URL
+  apiKey: API_KEY,
+  baseUrl: BASE_URL,
 } as any);
 
 const poemSchema: Schema = {
@@ -52,6 +82,8 @@ const letterSchema: Schema = {
 
 export const recommendPoem = async (userFeeling: string, language: Language): Promise<Poem> => {
   try {
+    if (!API_KEY) throw new Error("API Key is missing. Please check VITE_API_KEY settings in Vercel.");
+
     let prompt = "";
     if (language === 'zh') {
         // Approx 1 in 5 chance for Song Lyric (Ci)
@@ -84,24 +116,26 @@ export const recommendPoem = async (userFeeling: string, language: Language): Pr
     return poem;
   } catch (error) {
     console.error("Error recommending poem:", error);
+    // Return specific error message for debugging if it's an auth error
+    const errorMsg = (error as any).message || "";
     if (language === 'zh') {
         return {
-            title: "静夜思",
-            author: "李白",
-            dynasty: "唐",
-            content: ["床前明月光", "疑是地上霜", "举头望明月", "低头思故乡"],
-            analysis: "AI暂时无法连接，请稍后再试。",
-            context: "游子思乡之作。",
+            title: "出错啦",
+            author: "系统",
+            dynasty: "当今",
+            content: ["网络连接异常", "请检查API配置", "或稍后再试"],
+            analysis: errorMsg.includes("API Key") ? "未检测到API Key" : "AI暂时无法连接，请检查网络或额度。",
+            context: "系统提示",
             language: 'zh'
         };
     } else {
         return {
-            title: "The Road Not Taken",
-            author: "Robert Frost",
-            dynasty: "Modernist",
-            content: ["Two roads diverged in a yellow wood,", "And sorry I could not travel both", "And be one traveler, long I stood", "And looked down one as far as I could"],
-            analysis: "Unable to connect to AI. Please try again later.",
-            context: "A classic poem about choices.",
+            title: "Connection Error",
+            author: "System",
+            dynasty: "Modern",
+            content: ["Network connection failed", "Please check API settings", "Or try again later"],
+            analysis: errorMsg.includes("API Key") ? "API Key missing" : "Unable to connect to AI.",
+            context: "System Alert",
             language: 'en'
         };
     }
@@ -110,6 +144,7 @@ export const recommendPoem = async (userFeeling: string, language: Language): Pr
 
 export const analyzePoemKeywords = async (poem: Poem, language: Language): Promise<KeywordCard[]> => {
   try {
+    if (!API_KEY) return [];
     let prompt = "";
     let schema = cardsSchema;
 
@@ -148,6 +183,7 @@ export const analyzePoemKeywords = async (poem: Poem, language: Language): Promi
 
 export const generatePoetLetter = async (poem: Poem, userFeeling: string, language: Language): Promise<PoetLetter> => {
   try {
+    if (!API_KEY) throw new Error("No API Key");
     let prompt = "";
     if (language === 'zh') {
         prompt = `You are the poet ${poem.author} from the ${poem.dynasty} dynasty.
