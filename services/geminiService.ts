@@ -50,7 +50,13 @@ export const recommendPoem = async (userFeeling: string, language: Language): Pr
   try {
     let prompt = "";
     if (language === 'zh') {
-        prompt = `The user feels: "${userFeeling}". Recommend a single Tang or Song dynasty poem that perfectly resonates with this feeling. Return the poem in Traditional Chinese.`;
+        // Approx 1 in 5 chance for Song Lyric (Ci)
+        const isSongCi = Math.random() < 0.2; 
+        const typeRequest = isSongCi ? "Song Dynasty Lyric (Ci) (宋词)" : "Tang or Song Dynasty Poem (Shi) (唐诗/宋诗)";
+        
+        prompt = `The user feels: "${userFeeling}". Recommend a single ${typeRequest} that perfectly resonates with this feeling. 
+        If it is a Ci (Lyric), ensure the lines are formatted correctly in the 'content' array.
+        Return the poem in Traditional Chinese.`;
     } else {
         prompt = `The user feels: "${userFeeling}". Recommend a single classic Western poem (e.g., by Shakespeare, Keats, Wordsworth, Dickinson, Frost, Rilke, etc.) that perfectly resonates with this feeling. 
         For the 'dynasty' field, use the literary period (e.g., Romantic, Victorian, Modernist).

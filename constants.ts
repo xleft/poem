@@ -2,6 +2,10 @@
 export const APP_NAME = "诗隐";
 export const SUBTITLE = "Shi Yin";
 
+// Usage Limits
+export const FREE_DAILY_LIMIT = 3; // Number of generations before waiting
+export const MAX_WAIT_SECONDS = 30; // Cap wait time at 30s
+
 // Multiple ink blot paths for layered animation effects
 export const INK_PATHS = [
   // Blob 1: Organic spread
@@ -68,7 +72,7 @@ export const TRANSLATIONS = {
     collect: "收藏",
     collected: "已收藏",
     collectCard: "收藏此片羽",
-    removeCollect: "已收藏 (点击移除)",
+    removeCollect: "已收藏",
     toastCollected: "已收藏至我的诗笺",
     toastRemoved: "已移出诗笺",
     resonance: "共鸣",
@@ -79,7 +83,16 @@ export const TRANSLATIONS = {
     navCards: "诗中风月",
     navLetter: "与之共饮",
     cardCultural: "文化意象",
-    stamp: "藏"
+    stamp: "藏",
+    // New translations
+    meditation: "灵感汇聚，静心研墨...",
+    waitSeconds: (n: number) => `请静候 ${n} 秒`,
+    vipUnlock: "成为名士，免去等待",
+    vipTitle: "解锁隐士身份",
+    vipDesc: "每日无限次寻诗，免去研墨等待，尽享诗意。",
+    vipBtn: "确认成为名士 (演示)",
+    cancel: "取消",
+    vipGift: "正在试用VIP极速生成 (今日赠送)"
   },
   en: {
     title: "Poem Paper",
@@ -101,7 +114,7 @@ export const TRANSLATIONS = {
     collect: "Save",
     collected: "Saved",
     collectCard: "Collect this fragment",
-    removeCollect: "Saved (Click to remove)",
+    removeCollect: "Saved",
     toastCollected: "Saved to Collection",
     toastRemoved: "Removed from Collection",
     resonance: "Resonance",
@@ -112,6 +125,15 @@ export const TRANSLATIONS = {
     navCards: "Imagery",
     navLetter: "Converse",
     cardCultural: "Symbolic Meaning",
-    stamp: "Save"
+    stamp: "Save",
+    // New translations
+    meditation: "Grinding ink, gathering thoughts...",
+    waitSeconds: (n: number) => `Please wait ${n}s`,
+    vipUnlock: "Become a Hermit, Skip Wait",
+    vipTitle: "Become a Hermit",
+    vipDesc: "Unlimited daily poems. No more waiting for the ink to dry.",
+    vipBtn: "Become a Hermit (Demo)",
+    cancel: "Cancel",
+    vipGift: "Enjoying VIP Speed (Gifted)"
   }
 };

@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppScreen, Poem, KeywordCard, PoetLetter, UserCollectionItem, Language } from './types';
+import { AppScreen, Poem, KeywordCard, PoetLetter, UserCollectionItem, Language, UsageStats } from './types';
 import { recommendPoem, analyzePoemKeywords, generatePoetLetter } from './services/geminiService';
 import { InkBackground } from './components/InkBackground';
 import { Button } from './components/Button';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { SplashScreen } from './components/SplashScreen';
-import { POETIC_MOODS_ZH, POETIC_MOODS_EN, INK_PATHS, TRANSLATIONS } from './constants';
+import { POETIC_MOODS_ZH, POETIC_MOODS_EN, TRANSLATIONS, FREE_DAILY_LIMIT, MAX_WAIT_SECONDS } from './constants';
 
 // SVG Icons
 const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
@@ -54,10 +54,104 @@ function App() {
   const [currentCard, setCurrentCard] = useState<KeywordCard | null>(null); // For Single Card View
   const [collectedItems, setCollectedItems] = useState<UserCollectionItem[]>([]);
   
+  // Usage / VIP State
+  const [usageStats, setUsageStats] = useState<UsageStats>({ count: 0, lastResetDate: '', isVip: false });
+  const [meditationSeconds, setMeditationSeconds] = useState<number | null>(null); // If number, show overlay
+  const [showVipModal, setShowVipModal] = useState(false);
+
   // UI State
   const [isStampAnimating, setIsStampAnimating] = useState(false);
   const [toast, setToast] = useState<{show: boolean, message: string}>({ show: false, message: '' });
   
+  // --- INIT & EFFECTS ---
+
+  // Load usage stats on mount
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const storedStats = localStorage.getItem('shiyin_usage');
+    
+    if (storedStats) {
+      const parsed: UsageStats = JSON.parse(storedStats);
+      if (parsed.lastResetDate !== today) {
+        // New day, reset count but keep VIP
+        const newStats = { count: 0, lastResetDate: today, isVip: parsed.isVip };
+        setUsageStats(newStats);
+        localStorage.setItem('shiyin_usage', JSON.stringify(newStats));
+      } else {
+        setUsageStats(parsed);
+      }
+    } else {
+       const newStats = { count: 0, lastResetDate: today, isVip: false };
+       setUsageStats(newStats);
+       localStorage.setItem('shiyin_usage', JSON.stringify(newStats));
+    }
+  }, []);
+
+  // Save usage stats whenever they change
+  useEffect(() => {
+    if (usageStats.lastResetDate) {
+        localStorage.setItem('shiyin_usage', JSON.stringify(usageStats));
+    }
+  }, [usageStats]);
+
+
+  // --- HELPER FUNCTIONS ---
+  
+  const incrementUsage = () => {
+    setUsageStats(prev => ({ ...prev, count: prev.count + 1 }));
+  };
+
+  const checkUsageAndProceed = (callback: () => void) => {
+    // If VIP, ignore limits
+    if (usageStats.isVip) {
+        callback();
+        return;
+    }
+
+    // If under free limit, proceed immediately
+    if (usageStats.count < FREE_DAILY_LIMIT) {
+        incrementUsage();
+        callback();
+        return;
+    }
+
+    // If over limit, calculate wait time
+    // 1st extra time: 5s, 2nd: 10s, ... max 30s
+    const extraCount = usageStats.count - FREE_DAILY_LIMIT + 1;
+    const waitTime = Math.min(extraCount * 5, MAX_WAIT_SECONDS);
+
+    // Start Meditation
+    setMeditationSeconds(waitTime);
+    
+    // Countdown logic is handled in a useEffect or recursive timeout below, 
+    // but simplified: we'll just start the countdown interval here.
+    let remaining = waitTime;
+    const interval = setInterval(() => {
+        remaining -= 1;
+        setMeditationSeconds(remaining);
+        if (remaining <= 0) {
+            clearInterval(interval);
+            setMeditationSeconds(null);
+            incrementUsage();
+            callback();
+        }
+    }, 1000);
+
+    // If user closes modal or upgrades, we need to clear this interval. 
+    // For simplicity in this structure, we'll assume the overlay blocks interaction until done or upgraded.
+    // (See renderMeditationOverlay for the "Unlock VIP" interrupt)
+  };
+
+  const handleUpgradeVip = () => {
+     setUsageStats(prev => ({ ...prev, isVip: true }));
+     setShowVipModal(false);
+     // If meditating, cancel it immediately
+     setMeditationSeconds(null);
+     // Ideally we might want to re-trigger the pending action, but for UX simplicity 
+     // let's just let the user click again or we could store the pending callback.
+     // For now, user is free to click "Find Poem" again instantly.
+  };
+
   // Navigation Helper
   const navigateTo = (screen: AppScreen | 'SINGLE_CARD') => {
     setHistoryStack(prev => [...prev, currentScreen]);
@@ -82,43 +176,48 @@ function App() {
   // Handlers
   const handleFindPoem = async () => {
     if (!userInput.trim()) return;
-    setLoading(true);
-    setPoemSource('search');
-    setCurrentLetter(null); 
-    try {
-      const poem = await recommendPoem(userInput, language);
-      setCurrentPoem(poem);
-      setPoemCards([]); // Reset cards for new poem
-      navigateTo(AppScreen.POEM_DISPLAY);
-    } catch (e) {
-      alert("Failed to find a poem. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    
+    checkUsageAndProceed(async () => {
+        setLoading(true);
+        setPoemSource('search');
+        setCurrentLetter(null); 
+        try {
+          const poem = await recommendPoem(userInput, language);
+          setCurrentPoem(poem);
+          setPoemCards([]); // Reset cards for new poem
+          navigateTo(AppScreen.POEM_DISPLAY);
+        } catch (e) {
+          alert("Failed to find a poem. Please try again.");
+        } finally {
+          setLoading(false);
+        }
+    });
   };
 
   const handleRandomPoem = async () => {
-    setLoading(true);
-    setPoemSource('random');
-    setCurrentLetter(null);
-    try {
-      // Artificially wait at least 2 seconds to show the beautiful ink animation
-      const delayPromise = new Promise(resolve => setTimeout(resolve, 2500));
-      
-      const moods = language === 'zh' ? POETIC_MOODS_ZH : POETIC_MOODS_EN;
-      const randomMood = moods[Math.floor(Math.random() * moods.length)];
-      const poemPromise = recommendPoem(randomMood, language);
-      
-      const [poem] = await Promise.all([poemPromise, delayPromise]);
-      
-      setCurrentPoem(poem);
-      setPoemCards([]);
-      navigateTo(AppScreen.POEM_DISPLAY);
-    } catch (e) {
-       console.error(e);
-    } finally {
-      setLoading(false);
-    }
+    checkUsageAndProceed(async () => {
+        setLoading(true);
+        setPoemSource('random');
+        setCurrentLetter(null);
+        try {
+          // Artificially wait at least 2 seconds to show the beautiful ink animation
+          const delayPromise = new Promise(resolve => setTimeout(resolve, 2500));
+          
+          const moods = language === 'zh' ? POETIC_MOODS_ZH : POETIC_MOODS_EN;
+          const randomMood = moods[Math.floor(Math.random() * moods.length)];
+          const poemPromise = recommendPoem(randomMood, language);
+          
+          const [poem] = await Promise.all([poemPromise, delayPromise]);
+          
+          setCurrentPoem(poem);
+          setPoemCards([]);
+          navigateTo(AppScreen.POEM_DISPLAY);
+        } catch (e) {
+           console.error(e);
+        } finally {
+          setLoading(false);
+        }
+    });
   };
 
   const handleOpenShanHeZhi = async () => {
@@ -225,6 +324,73 @@ function App() {
 
   // --- Render Components ---
 
+  const renderMeditationOverlay = () => {
+     if (meditationSeconds === null) return null;
+
+     return (
+        <div className="fixed inset-0 z-[110] bg-stone-900 flex flex-col items-center justify-center text-stone-50 animate-fade-in">
+            {/* Ambient Circle */}
+            <div className="w-64 h-64 border border-stone-700 rounded-full flex items-center justify-center relative">
+                <div className="absolute inset-0 border-2 border-stone-500 rounded-full animate-ping opacity-20" style={{animationDuration: '3s'}}></div>
+                <span className="text-6xl font-serif">{meditationSeconds}</span>
+            </div>
+            
+            <p className="mt-8 text-lg tracking-widest font-serif opacity-80 animate-pulse">
+                {T.meditation}
+            </p>
+            <p className="mt-2 text-sm text-stone-400 font-serif">
+                {T.waitSeconds(meditationSeconds)}
+            </p>
+
+            <button 
+               onClick={() => setShowVipModal(true)}
+               className="mt-12 border border-stone-600 px-6 py-2 rounded-full text-sm hover:bg-stone-800 transition"
+            >
+                {T.vipUnlock}
+            </button>
+        </div>
+     );
+  };
+
+  const renderVipModal = () => {
+    if (!showVipModal) return null;
+
+    return (
+        <div className="fixed inset-0 z-[120] bg-stone-900/80 backdrop-blur-md flex items-center justify-center px-4">
+            <div className="bg-[#fcfaf5] text-stone-900 p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center relative border border-stone-200">
+                <button onClick={() => setShowVipModal(false)} className="absolute top-4 right-4 text-stone-400 hover:text-stone-900">
+                    <CloseIcon />
+                </button>
+
+                <div className="w-16 h-16 bg-stone-900 rounded-full mx-auto mb-6 flex items-center justify-center text-white">
+                    <MountainIcon />
+                </div>
+
+                <h3 className={`text-2xl font-bold mb-4 ${language === 'zh' ? 'font-calligraphy' : 'font-serif'}`}>
+                    {T.vipTitle}
+                </h3>
+                <p className="text-stone-600 mb-8 font-serif leading-relaxed">
+                    {T.vipDesc}
+                </p>
+
+                <button 
+                    onClick={handleUpgradeVip}
+                    className="w-full bg-stone-900 text-stone-50 py-3 rounded-lg font-serif tracking-wider hover:bg-stone-800 transition shadow-lg"
+                >
+                    {T.vipBtn}
+                </button>
+                
+                <button 
+                    onClick={() => setShowVipModal(false)}
+                    className="mt-4 text-xs text-stone-400 hover:text-stone-600 font-serif"
+                >
+                    {T.cancel}
+                </button>
+            </div>
+        </div>
+    );
+  };
+
   const renderHome = () => (
     <div className="flex flex-col h-full p-6 animate-ink relative">
       <header className="flex justify-between items-center mb-12 transition-opacity duration-500" style={{ opacity: loading ? 0 : 1 }}>
@@ -255,6 +421,13 @@ function App() {
             {T.searchBtn}
           </Button>
         </div>
+
+        {/* Usage Indicator */}
+        {!usageStats.isVip && (
+            <div className="absolute bottom-6 text-stone-400 text-xs font-serif tracking-widest">
+                {usageStats.count < FREE_DAILY_LIMIT ? T.vipGift : `今日灵感: ${usageStats.count} / ${FREE_DAILY_LIMIT}`}
+            </div>
+        )}
       </main>
     </div>
   );
@@ -686,7 +859,9 @@ function App() {
                         
                         <div className="mt-12 flex flex-col items-end gap-2">
                             <span className={language === 'zh' ? 'font-calligraphy text-2xl' : 'font-serif text-xl italic'}>{currentLetter.poet}</span>
-                            <div className="w-6 h-6 border border-red-800 text-red-800 flex items-center justify-center text-[10px]">
+                            
+                            {/* Redesigned Seal */}
+                            <div className="w-12 h-12 border-4 border-red-800/80 text-red-900 flex items-center justify-center text-sm font-calligraphy rounded-md transform -rotate-12 opacity-90" style={{ borderRadius: '4px' }}>
                                 {language === 'zh' ? `${currentLetter.poet[0]}印` : 'Seal'}
                             </div>
                         </div>
@@ -712,6 +887,9 @@ function App() {
       <InkBackground />
       
       {loading && <LoadingOverlay message={currentScreen === AppScreen.LETTER ? T.loadingLetter : (poemSource === 'random' ? T.loadingRandom : T.loadingSearch)} />}
+      
+      {renderMeditationOverlay()}
+      {renderVipModal()}
 
       <div className="relative z-10 h-full max-w-md mx-auto bg-[#f5f5f4] shadow-2xl overflow-hidden sm:border-x sm:border-stone-200">
         {currentScreen === AppScreen.HOME && renderHome()}

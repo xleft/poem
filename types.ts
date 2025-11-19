@@ -46,3 +46,9 @@ export interface UserCollectionItem {
   sourcePrompt?: string; // The user's input feeling (if applicable)
   language: Language;
 }
+
+export interface UsageStats {
+  count: number;
+  lastResetDate: string;
+  isVip: boolean;
+}
