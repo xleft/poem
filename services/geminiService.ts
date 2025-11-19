@@ -2,7 +2,9 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Poem, KeywordCard, PoetLetter, Language } from "../types";
 
 // Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ 
+  apiKey: process.env.API_KEY
+});
 
 const poemSchema: Schema = {
   type: Type.OBJECT,
