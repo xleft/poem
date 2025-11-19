@@ -1,19 +1,10 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Poem, KeywordCard, PoetLetter, Language } from "../types";
 
 // --- CONFIGURATION ---
-
-// Helper function to safely access environment variables
-// This prevents crashes if import.meta.env is undefined in certain environments
 const getEnv = (key: string): string => {
   try {
-    // Check Vite standard
     if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
       return import.meta.env[key];
-    }
-    // Check Legacy/Node standard (fallback)
-    if (typeof process !== 'undefined' && process.env && process.env[key]) {
-      return process.env[key] || "";
     }
   } catch (e) {
     console.warn("Error accessing environment variable:", key, e);
@@ -22,74 +13,67 @@ const getEnv = (key: string): string => {
 };
 
 const API_KEY = getEnv("VITE_API_KEY");
-const BASE_URL = getEnv("VITE_API_BASE_URL") || "https://generativelanguage.googleapis.com";
+// Use the base domain provided by the user
+const RAW_BASE_URL = getEnv("VITE_API_BASE_URL") || "https://api.openai-hk.com";
+// Remove trailing slash and ensure we don't have subpaths like /google or /v1 yet
+const BASE_URL = RAW_BASE_URL.replace(/\/$/, "").replace(/\/google$/, "").replace(/\/v1$/, "");
 
-// Debug logging to help verify configuration in browser console (safely masks key)
-console.log("Gemini Service Init:", { 
-  hasKey: !!API_KEY, 
-  baseUrl: BASE_URL,
-  keyLength: API_KEY ? API_KEY.length : 0
-});
+console.log("Gemini Service (OpenAI-HK Mode):", { hasKey: !!API_KEY, baseUrl: BASE_URL });
 
-// Initialize Gemini Client
-// We cast configuration to 'any' to avoid TypeScript errors if the SDK type definition 
-// is stricter than the runtime support for 'baseUrl'.
-const ai = new GoogleGenAI({ 
-  apiKey: API_KEY,
-  baseUrl: BASE_URL,
-} as any);
+// Helper to make OpenAI-Compatible API calls
+async function callOpenAICompatibleAPI(messages: any[], schemaDescription?: string) {
+  if (!API_KEY) throw new Error("API Key is missing. Check Vercel Environment Variables.");
 
-const poemSchema: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    title: { type: Type.STRING },
-    author: { type: Type.STRING },
-    dynasty: { type: Type.STRING },
-    content: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-      description: "The poem lines."
+  const url = `${BASE_URL}/v1/chat/completions`;
+
+  // Explicitly ask for JSON in the system prompt to ensure parsing works
+  const systemMessage = {
+    role: "system",
+    content: `You are a helpful assistant. 
+    ${schemaDescription ? `You must output valid JSON strictly following this structure: ${schemaDescription}` : "Output valid JSON."}
+    Do not include markdown formatting (like \`\`\`json). Just return the raw JSON string.`
+  };
+
+  const body = {
+    model: "gemini-1.5-flash", // OpenAI-HK supports this model name via their OpenAI interface
+    messages: [systemMessage, ...messages],
+    temperature: 1.0,
+    response_format: { type: "json_object" } // Force JSON mode
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${API_KEY}` // OpenAI style auth
     },
-    analysis: { type: Type.STRING, description: "Why this poem matches the user's feeling." },
-    context: { type: Type.STRING, description: "Brief historical context of the poem." }
-  },
-  required: ["title", "author", "dynasty", "content", "analysis", "context"]
-};
+    body: JSON.stringify(body)
+  });
 
-const cardsSchema: Schema = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      term: { type: Type.STRING },
-      category: { type: Type.STRING },
-      description: { type: Type.STRING },
-      culturalSignificance: { type: Type.STRING }
-    },
-    required: ["term", "category", "description", "culturalSignificance"]
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("API Error Details:", errorText);
+    throw new Error(`API Request Failed: ${response.status} ${response.statusText} - ${errorText}`);
   }
-};
 
-const letterSchema: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    content: { type: Type.STRING, description: "The body of the letter from the poet." },
-    poet: { type: Type.STRING },
-    replyTo: { type: Type.STRING }
-  },
-  required: ["content", "poet", "replyTo"]
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content;
+  
+  if (!text) {
+    throw new Error("No content in response");
+  }
+
+  return text;
 }
+
+// --- EXPORTED FUNCTIONS ---
 
 export const recommendPoem = async (userFeeling: string, language: Language): Promise<Poem> => {
   try {
-    if (!API_KEY) throw new Error("API Key is missing. Please check VITE_API_KEY settings in Vercel.");
-
     let prompt = "";
     if (language === 'zh') {
-        // Approx 1 in 5 chance for Song Lyric (Ci)
         const isSongCi = Math.random() < 0.2; 
         const typeRequest = isSongCi ? "Song Dynasty Lyric (Ci) (宋词)" : "Tang or Song Dynasty Poem (Shi) (唐诗/宋诗)";
-        
         prompt = `The user feels: "${userFeeling}". Recommend a single ${typeRequest} that perfectly resonates with this feeling. 
         If it is a Ci (Lyric), ensure the lines are formatted correctly in the 'content' array.
         Return the poem in Traditional Chinese.`;
@@ -99,32 +83,30 @@ export const recommendPoem = async (userFeeling: string, language: Language): Pr
         Return the content in English.`;
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: poemSchema,
-        temperature: 1.0, 
-      }
+    const schemaDesc = JSON.stringify({
+        title: "string",
+        author: "string",
+        dynasty: "string",
+        content: ["string (line 1)", "string (line 2)"],
+        analysis: "string (why it matches)",
+        context: "string (historical context)"
     });
 
-    const text = response.text;
-    if (!text) throw new Error("No response from AI");
-    const poem = JSON.parse(text) as Poem;
+    const jsonString = await callOpenAICompatibleAPI([{ role: "user", content: prompt }], schemaDesc);
+    const poem = JSON.parse(jsonString) as Poem;
     poem.language = language;
     return poem;
   } catch (error) {
     console.error("Error recommending poem:", error);
-    // Return specific error message for debugging if it's an auth error
     const errorMsg = (error as any).message || "";
+    
     if (language === 'zh') {
         return {
             title: "出错啦",
             author: "系统",
             dynasty: "当今",
             content: ["网络连接异常", "请检查API配置", "或稍后再试"],
-            analysis: errorMsg.includes("API Key") ? "未检测到API Key" : "AI暂时无法连接，请检查网络或额度。",
+            analysis: errorMsg.includes("401") ? "API Key无效" : "AI连接失败，请检查Vercel配置。",
             context: "系统提示",
             language: 'zh'
         };
@@ -133,8 +115,8 @@ export const recommendPoem = async (userFeeling: string, language: Language): Pr
             title: "Connection Error",
             author: "System",
             dynasty: "Modern",
-            content: ["Network connection failed", "Please check API settings", "Or try again later"],
-            analysis: errorMsg.includes("API Key") ? "API Key missing" : "Unable to connect to AI.",
+            content: ["Network connection failed", "Check API Settings"],
+            analysis: "Unable to connect to AI.",
             context: "System Alert",
             language: 'en'
         };
@@ -144,10 +126,7 @@ export const recommendPoem = async (userFeeling: string, language: Language): Pr
 
 export const analyzePoemKeywords = async (poem: Poem, language: Language): Promise<KeywordCard[]> => {
   try {
-    if (!API_KEY) return [];
     let prompt = "";
-    let schema = cardsSchema;
-
     if (language === 'zh') {
         prompt = `You are an expert researcher in Chinese ancient poetry geography, phenology, and local customs. 
         Analyze the poem "${poem.title}" by ${poem.author}. 
@@ -163,18 +142,15 @@ export const analyzePoemKeywords = async (poem: Poem, language: Language): Promi
         Ensure all fields are in English.`;
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: schema
-      }
-    });
+    const schemaDesc = JSON.stringify([{
+        term: "string",
+        category: "string",
+        description: "string",
+        culturalSignificance: "string"
+    }]);
 
-    const text = response.text;
-    if (!text) return [];
-    return JSON.parse(text) as KeywordCard[];
+    const jsonString = await callOpenAICompatibleAPI([{ role: "user", content: prompt }], schemaDesc);
+    return JSON.parse(jsonString) as KeywordCard[];
   } catch (error) {
     console.error("Error analyzing keywords:", error);
     return [];
@@ -183,7 +159,6 @@ export const analyzePoemKeywords = async (poem: Poem, language: Language): Promi
 
 export const generatePoetLetter = async (poem: Poem, userFeeling: string, language: Language): Promise<PoetLetter> => {
   try {
-    if (!API_KEY) throw new Error("No API Key");
     let prompt = "";
     if (language === 'zh') {
         prompt = `You are the poet ${poem.author} from the ${poem.dynasty} dynasty.
@@ -204,29 +179,23 @@ export const generatePoetLetter = async (poem: Poem, userFeeling: string, langua
         Keep it under 150 words.`;
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: letterSchema
-      }
+    const schemaDesc = JSON.stringify({
+        content: "string (letter body)",
+        poet: "string",
+        replyTo: "string"
     });
-    
-    const text = response.text;
-    if (!text) throw new Error("No response");
-    const data = JSON.parse(text);
-    
+
+    const jsonString = await callOpenAICompatibleAPI([{ role: "user", content: prompt }], schemaDesc);
+    const data = JSON.parse(jsonString);
     return {
         content: data.content,
         poet: poem.author,
         replyTo: userFeeling
     };
-
   } catch (error) {
     console.error("Error generating letter", error);
     return {
-        content: language === 'zh' ? "酒逢知己千杯少，话不投机半句多。今日微醺，暂且搁笔。" : "Words fail me today. Let the silence speak.",
+        content: language === 'zh' ? "酒逢知己千杯少，话不投机半句多。今日微醺，暂且搁笔。" : "Words fail me today.",
         poet: poem.author,
         replyTo: userFeeling
     };
