@@ -2,9 +2,12 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Poem, KeywordCard, PoetLetter, Language } from "../types";
 
 // Initialize Gemini Client
+// We use 'as any' to bypass TypeScript checking for baseUrl if the SDK definition is outdated,
+// ensuring we can connect to the third-party proxy.
 const ai = new GoogleGenAI({ 
-  apiKey: process.env.API_KEY
-});
+  apiKey: process.env.API_KEY,
+  baseUrl: process.env.VITE_API_BASE_URL
+} as any);
 
 const poemSchema: Schema = {
   type: Type.OBJECT,
