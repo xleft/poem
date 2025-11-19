@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppScreen, Poem, KeywordCard, PoetLetter, UserCollectionItem } from './types';
+import { AppScreen, Poem, KeywordCard, PoetLetter, UserCollectionItem, Language } from './types';
 import { recommendPoem, analyzePoemKeywords, generatePoetLetter } from './services/geminiService';
 import { InkBackground } from './components/InkBackground';
 import { Button } from './components/Button';
 import { LoadingOverlay } from './components/LoadingOverlay';
-import { POETIC_MOODS, INK_PATHS } from './constants';
+import { SplashScreen } from './components/SplashScreen';
+import { POETIC_MOODS_ZH, POETIC_MOODS_EN, INK_PATHS, TRANSLATIONS } from './constants';
 
 // SVG Icons
 const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
@@ -34,7 +35,10 @@ const Toast = ({ message, show, onClose }: { message: string; show: boolean; onC
 };
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState<AppScreen | 'SINGLE_CARD'>(AppScreen.HOME);
+  const [currentScreen, setCurrentScreen] = useState<AppScreen | 'SINGLE_CARD'>(AppScreen.SPLASH);
+  const [language, setLanguage] = useState<Language>('zh');
+  const T = TRANSLATIONS[language]; // Helper for current language texts
+
   // Navigation History Stack to handle "Back" correctly
   const [historyStack, setHistoryStack] = useState<(AppScreen | 'SINGLE_CARD')[]>([]);
 
@@ -70,6 +74,11 @@ function App() {
     }
   };
 
+  const handleSplashComplete = (lang: Language) => {
+      setLanguage(lang);
+      setCurrentScreen(AppScreen.HOME);
+  };
+
   // Handlers
   const handleFindPoem = async () => {
     if (!userInput.trim()) return;
@@ -77,7 +86,7 @@ function App() {
     setPoemSource('search');
     setCurrentLetter(null); 
     try {
-      const poem = await recommendPoem(userInput);
+      const poem = await recommendPoem(userInput, language);
       setCurrentPoem(poem);
       setPoemCards([]); // Reset cards for new poem
       navigateTo(AppScreen.POEM_DISPLAY);
@@ -96,8 +105,9 @@ function App() {
       // Artificially wait at least 2 seconds to show the beautiful ink animation
       const delayPromise = new Promise(resolve => setTimeout(resolve, 2500));
       
-      const randomMood = POETIC_MOODS[Math.floor(Math.random() * POETIC_MOODS.length)];
-      const poemPromise = recommendPoem(randomMood);
+      const moods = language === 'zh' ? POETIC_MOODS_ZH : POETIC_MOODS_EN;
+      const randomMood = moods[Math.floor(Math.random() * moods.length)];
+      const poemPromise = recommendPoem(randomMood, language);
       
       const [poem] = await Promise.all([poemPromise, delayPromise]);
       
@@ -117,7 +127,7 @@ function App() {
     
     if (poemCards.length === 0) {
       setLoading(true);
-      const cards = await analyzePoemKeywords(currentPoem);
+      const cards = await analyzePoemKeywords(currentPoem, language);
       setPoemCards(cards);
       setLoading(false);
     }
@@ -131,8 +141,8 @@ function App() {
     if (!currentLetter || (currentLetter.poet !== currentPoem.author)) {
       setLoading(true);
       // Use user input or a default context if random poem
-      const context = poemSource === 'search' ? userInput : "我读到这首诗，心中若有所感";
-      const letter = await generatePoetLetter(currentPoem, context);
+      const context = poemSource === 'search' ? userInput : (language === 'zh' ? "我读到这首诗，心中若有所感" : "I read this poem and felt moved.");
+      const letter = await generatePoetLetter(currentPoem, context, language);
       setCurrentLetter(letter);
       setLoading(false);
     }
@@ -165,7 +175,7 @@ function App() {
     if (isAlreadyCollected) {
       // Remove logic
       setCollectedItems(prev => prev.filter(i => i.id !== itemIdToRemove));
-      setToast({ show: true, message: "已移出诗笺" });
+      setToast({ show: true, message: T.toastRemoved });
     } else {
       // Add logic
       const newItem: UserCollectionItem = {
@@ -173,26 +183,26 @@ function App() {
         type,
         data: item as any,
         date: new Date().toISOString(),
-        sourcePrompt: (type === 'poem' && poemSource === 'search') ? userInput : undefined
+        sourcePrompt: (type === 'poem' && poemSource === 'search') ? userInput : undefined,
+        language: language
       };
       
       setCollectedItems([...collectedItems, newItem]);
       
       setIsStampAnimating(true);
       setTimeout(() => setIsStampAnimating(false), 600);
-      setToast({ show: true, message: "已收藏至我的诗笺" });
+      setToast({ show: true, message: T.toastCollected });
     }
   };
 
   const viewCollectionItem = (item: UserCollectionItem) => {
     if (item.type === 'poem') {
       setCurrentPoem(item.data as Poem);
-      // Restore the context if available
       if (item.sourcePrompt) {
         setUserInput(item.sourcePrompt);
         setPoemSource('search');
       } else {
-        setPoemSource('collection'); // Treat as separate mode or random
+        setPoemSource('collection');
       }
       navigateTo(AppScreen.POEM_DISPLAY);
     } else if (item.type === 'card') {
@@ -218,10 +228,12 @@ function App() {
   const renderHome = () => (
     <div className="flex flex-col h-full p-6 animate-ink relative">
       <header className="flex justify-between items-center mb-12 transition-opacity duration-500" style={{ opacity: loading ? 0 : 1 }}>
-        <h1 className="text-3xl font-calligraphy font-bold text-stone-900">诗隐</h1>
+        <h1 className={`text-3xl font-bold text-stone-900 ${language === 'zh' ? 'font-calligraphy' : 'font-serif tracking-widest'}`}>
+            {T.title}
+        </h1>
         <div className="cursor-pointer group" onClick={() => navigateTo(AppScreen.COLLECTION)}>
-           <div className="font-calligraphy text-2xl text-stone-800 border-b-2 border-stone-300 pb-1 hover:text-stone-900 hover:border-stone-800 transition-colors">
-              我的诗笺
+           <div className={`text-2xl text-stone-800 border-b-2 border-stone-300 pb-1 hover:text-stone-900 hover:border-stone-800 transition-colors ${language === 'zh' ? 'font-calligraphy' : 'font-serif'}`}>
+              {T.myCollection}
            </div>
         </div>
       </header>
@@ -230,7 +242,7 @@ function App() {
         <div className="w-full max-w-md bg-white/50 backdrop-blur-sm p-6 rounded-2xl shadow-xl border border-stone-200">
           <textarea
             className="w-full bg-transparent border-none resize-none focus:ring-0 text-stone-700 font-serif text-lg placeholder:text-stone-400 h-32"
-            placeholder="说说你最近的一个隐秘感受..."
+            placeholder={T.placeholder}
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
             disabled={loading}
@@ -238,9 +250,9 @@ function App() {
         </div>
         
         <div className="mt-12 flex gap-6">
-          <Button variant="secondary" onClick={handleRandomPoem} disabled={loading}>随缘一首</Button>
+          <Button variant="secondary" onClick={handleRandomPoem} disabled={loading}>{T.randomBtn}</Button>
           <Button onClick={handleFindPoem} disabled={loading} icon={<SearchIcon />}>
-            寻诗一首
+            {T.searchBtn}
           </Button>
         </div>
       </main>
@@ -248,29 +260,44 @@ function App() {
   );
 
   const renderCollection = () => {
-    const poems = collectedItems.filter(i => i.type === 'poem');
-    const cards = collectedItems.filter(i => i.type === 'card');
-    const letters = collectedItems.filter(i => i.type === 'letter');
+    // Filter items by current language to avoid mixing Chinese poems with English UI
+    const langItems = collectedItems.filter(i => i.language === language);
+    const poems = langItems.filter(i => i.type === 'poem');
+    const cards = langItems.filter(i => i.type === 'card');
+    const letters = langItems.filter(i => i.type === 'letter');
 
     const TabButton = ({ id, label }: { id: 'poems' | 'cards' | 'letters', label: string }) => {
         const isActive = collectionTab === id;
         return (
             <button 
                 onClick={() => setCollectionTab(id)}
-                className="relative px-6 py-2 font-serif tracking-widest transition-all duration-300 flex items-center justify-center"
+                className="relative px-3 sm:px-4 py-2 font-serif tracking-widest transition-all duration-300 flex flex-col items-center justify-center group shrink-0"
             >
-                {isActive && (
-                    <div className="absolute inset-0 flex items-center justify-center z-0 opacity-90">
-                         <svg viewBox="0 0 200 100" className="w-32 h-16 fill-stone-900 transform scale-125">
-                            <path d="M20,50 Q50,10 100,50 T180,50" stroke="none" fill="currentColor" style={{filter: 'blur(8px)', opacity: 0.8}} />
-                             {/* Simple simulated ink blot using the imported path but distorted/scaled */}
-                             <path d={INK_PATHS[0]} transform="scale(0.8, 0.4) translate(20, 20)" />
-                         </svg>
-                    </div>
-                )}
-                <span className={`relative z-10 text-lg ${isActive ? 'text-stone-100 font-bold' : 'text-stone-400 hover:text-stone-600'}`}>
+                {/* Text */}
+                <span className={`relative z-10 text-base sm:text-lg whitespace-nowrap transition-colors duration-300 ${isActive ? 'text-stone-900 font-bold' : 'text-stone-400 group-hover:text-stone-600'}`}>
                     {label}
                 </span>
+                
+                {/* Brush Stroke Underline */}
+                <div className={`absolute -bottom-2 left-0 right-0 h-4 pointer-events-none transition-opacity duration-500 flex justify-center ${isActive ? 'opacity-100' : 'opacity-0'}`}>
+                   <svg viewBox="0 0 60 12" className="h-full w-auto max-w-[80%] overflow-visible" preserveAspectRatio="none">
+                       <defs>
+                           <filter id="rough-edge">
+                               <feTurbulence type="fractalNoise" baseFrequency="0.08" numOctaves="2" result="noise" />
+                               <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" />
+                           </filter>
+                       </defs>
+                       <path 
+                         d="M2,6 Q15,9 30,6 T58,6" 
+                         stroke="currentColor" 
+                         strokeWidth="4" 
+                         fill="none" 
+                         className="text-stone-800" 
+                         strokeLinecap="round"
+                         style={{ filter: 'url(#rough-edge)' }}
+                       />
+                   </svg>
+                </div>
             </button>
         );
     }
@@ -284,14 +311,16 @@ function App() {
              <button onClick={goBack} className="absolute left-6 p-2 text-stone-500 hover:text-stone-900 transition">
                 <ChevronLeft />
              </button>
-             <h2 className="text-4xl font-calligraphy text-stone-900">我的诗笺</h2>
+             <h2 className={`text-4xl text-stone-900 ${language === 'zh' ? 'font-calligraphy' : 'font-serif tracking-widest'}`}>
+                {T.myCollection}
+             </h2>
          </div>
          
-         {/* Ink Style Tabs */}
-         <div className="flex justify-center gap-4 mb-6 shrink-0">
-            <TabButton id="poems" label="笺中诗" />
-            <TabButton id="cards" label="诗中风月" />
-            <TabButton id="letters" label="书信" />
+         {/* Clean Brush Tabs */}
+         <div className="flex justify-center items-center gap-2 sm:gap-6 mb-8 shrink-0 border-b border-stone-200/50 pb-2 mx-4 overflow-x-auto no-scrollbar">
+            <TabButton id="poems" label={T.tabPoems} />
+            <TabButton id="cards" label={T.tabCards} />
+            <TabButton id="letters" label={T.tabLetters} />
          </div>
   
          <div className="flex-1 overflow-y-auto px-6 pb-10 no-scrollbar">
@@ -300,7 +329,7 @@ function App() {
             {collectionTab === 'poems' && (
               poems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-stone-400 gap-4">
-                   <p className="font-serif tracking-widest opacity-50">暂无藏诗</p>
+                   <p className="font-serif tracking-widest opacity-50">{T.emptyPoems}</p>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -308,7 +337,7 @@ function App() {
                      <div 
                        key={item.id} 
                        onClick={() => viewCollectionItem(item)}
-                       className="bg-white p-8 rounded-lg shadow-lg hover:shadow-xl transition-all cursor-pointer text-center border border-stone-100/50"
+                       className="bg-white p-8 rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer text-center border border-stone-100"
                      >
                         <h3 className="text-2xl font-bold text-stone-900 font-serif mb-3">
                            {(item.data as Poem).title}
@@ -332,7 +361,7 @@ function App() {
             {collectionTab === 'cards' && (
                cards.length === 0 ? (
                  <div className="flex flex-col items-center justify-center h-64 text-stone-400 gap-4">
-                    <p className="font-serif tracking-widest opacity-50">未曾采撷风月</p>
+                    <p className="font-serif tracking-widest opacity-50">{T.emptyCards}</p>
                  </div>
                ) : (
                  <div className="space-y-6">
@@ -341,7 +370,7 @@ function App() {
                       return (
                         <div key={item.id} 
                              onClick={() => viewCollectionItem(item)}
-                             className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all border border-stone-50 relative overflow-hidden group cursor-pointer">
+                             className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all border border-stone-50 relative overflow-hidden group cursor-pointer">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex items-baseline gap-3">
                                     <h4 className="text-2xl font-bold text-stone-900 font-serif">{cardData.term}</h4>
@@ -361,7 +390,7 @@ function App() {
             {collectionTab === 'letters' && (
                letters.length === 0 ? (
                  <div className="flex flex-col items-center justify-center h-64 text-stone-400 gap-4">
-                    <p className="font-serif tracking-widest opacity-50">尚无来信</p>
+                    <p className="font-serif tracking-widest opacity-50">{T.emptyLetters}</p>
                  </div>
                ) : (
                  <div className="space-y-6">
@@ -371,15 +400,17 @@ function App() {
                         <div 
                           key={item.id} 
                           onClick={() => viewCollectionItem(item)}
-                          className="bg-[#fcfaf5] p-6 rounded-lg shadow-md hover:shadow-xl transition-all cursor-pointer border border-stone-200/60 relative"
+                          className="bg-[#fcfaf5] p-6 rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer border border-stone-200/60 relative"
                         >
                            <div className="absolute inset-0 opacity-30 pointer-events-none mix-blend-multiply z-0" 
                                 style={{backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='1' cy='1' r='1' fill='%23a8a29e'/%3E%3C/svg%3E")`}}>
                            </div>
                            <div className="relative z-10">
                              <h3 className="text-lg font-bold text-stone-900 font-serif mb-2 flex items-center gap-2">
-                                <span>{letterData.poet} 的来信</span>
-                                <span className="text-[10px] text-red-800 border border-red-800 px-1 rounded-sm opacity-70">{letterData.poet[0]}印</span>
+                                <span>{letterData.poet} {T.poetLetter}</span>
+                                <span className="text-[10px] text-red-800 border border-red-800 px-1 rounded-sm opacity-70">
+                                    {language === 'zh' ? `${letterData.poet[0]}印` : 'Seal'}
+                                </span>
                              </h3>
                              <p className="text-stone-500 text-sm font-serif line-clamp-3 leading-loose">
                                {letterData.content}
@@ -423,10 +454,12 @@ function App() {
                     : 'bg-white/80 hover:bg-red-50 border-2 border-red-800 text-red-800'}
                   ${isStampAnimating ? 'scale-110 ring-4 ring-red-200' : 'hover:scale-105'}
                 `}
-                title={isCollectedState ? "已收藏" : "收藏"}
+                title={isCollectedState ? T.collected : T.collect}
               >
                  <div className={`w-10 h-10 rounded-full border border-red-800 flex items-center justify-center absolute ${isStampAnimating ? 'animate-ping opacity-50' : 'hidden'}`}></div>
-                 <span className="font-calligraphy text-2xl select-none pt-1">藏</span>
+                 <span className={`${language === 'zh' ? 'font-calligraphy text-2xl pt-1' : 'font-serif text-xs font-bold'}`}>
+                    {T.stamp}
+                 </span>
               </button>
 
               <div className="flex-1 overflow-y-auto no-scrollbar p-8 pt-12">
@@ -446,18 +479,17 @@ function App() {
                   </div>
                   
                   <div className="border-t border-stone-200 pt-6">
-                    {/* If opened from collection, logic depends on if we have source prompt */}
                     {(poemSource === 'search' || poemSource === 'collection') && currentPoem.analysis ? (
                       <div className="space-y-3">
                         <p className="text-stone-600 text-sm leading-loose font-serif text-justify">
-                          <span className="block text-stone-400 text-xs mb-1">共鸣</span>
+                          <span className="block text-stone-400 text-xs mb-1 uppercase tracking-wider">{T.resonance}</span>
                           {currentPoem.analysis}
                         </p>
                       </div>
                     ) : (
                       <div className="space-y-3">
                          <p className="text-stone-500 text-sm leading-loose font-serif text-justify opacity-80">
-                          <span className="block text-stone-400 text-xs mb-1">背景</span>
+                          <span className="block text-stone-400 text-xs mb-1 uppercase tracking-wider">{T.context}</span>
                           {currentPoem.context}
                          </p>
                       </div>
@@ -467,7 +499,7 @@ function App() {
                   {/* User Input Echo */}
                   {(poemSource === 'search' || (poemSource === 'collection' && userInput)) && userInput && (
                      <div className="mt-6 p-4 bg-stone-50 rounded-lg border border-stone-100">
-                        <span className="block text-stone-400 text-xs mb-2">你的心境</span>
+                        <span className="block text-stone-400 text-xs mb-2 uppercase tracking-wider">{T.yourFeeling}</span>
                         <p className="text-stone-500 italic text-sm font-serif">"{userInput}"</p>
                      </div>
                   )}
@@ -477,20 +509,24 @@ function App() {
            </div>
         </main>
 
-        {/* Only show bottom nav if NOT coming from collection (i.e. history stack is empty or previous was home) */}
+        {/* Bottom Nav */}
         <div className="absolute bottom-8 left-0 right-0 z-40 flex justify-center gap-16 pointer-events-none">
           <div className="flex flex-col items-center gap-2 cursor-pointer group pointer-events-auto" onClick={handleOpenShanHeZhi}>
              <div className="p-4 rounded-full bg-[#e8e6e1]/80 backdrop-blur-md shadow-lg border border-white/20 group-hover:bg-stone-300 transition-all duration-300 transform group-hover:-translate-y-1 text-stone-800">
                <MountainIcon />
              </div>
-             <span className="text-xs font-serif text-stone-600 tracking-widest group-hover:text-stone-900 drop-shadow-sm">诗中风月</span>
+             <span className="text-xs font-serif text-stone-600 tracking-widest group-hover:text-stone-900 drop-shadow-sm">
+                {T.navCards}
+             </span>
           </div>
           
           <div className="flex flex-col items-center gap-2 cursor-pointer group pointer-events-auto" onClick={handleOpenLetter}>
              <div className="p-4 rounded-full bg-stone-800/90 backdrop-blur-md shadow-xl border border-white/10 group-hover:bg-stone-700 transition-all duration-300 transform group-hover:-translate-y-1 text-stone-100">
                <WineIcon />
              </div>
-             <span className="text-xs font-serif text-stone-600 tracking-widest group-hover:text-stone-900 drop-shadow-sm">与之共饮</span>
+             <span className="text-xs font-serif text-stone-600 tracking-widest group-hover:text-stone-900 drop-shadow-sm">
+                {T.navLetter}
+             </span>
           </div>
         </div>
       </div>
@@ -502,7 +538,9 @@ function App() {
        <Toast show={toast.show} message={toast.message} onClose={() => setToast({ ...toast, show: false })} />
        <div className="w-full sm:w-96 bg-[#fdfbf7] h-full shadow-2xl p-6 flex flex-col animate-slide-in-right relative">
           <div className="flex justify-between items-center mb-8 shrink-0">
-             <h3 className="text-2xl font-calligraphy text-stone-900">诗中风月</h3>
+             <h3 className={`text-2xl text-stone-900 ${language === 'zh' ? 'font-calligraphy' : 'font-serif tracking-wider'}`}>
+                {T.navCards}
+             </h3>
              <button onClick={() => setCurrentScreen(AppScreen.POEM_DISPLAY)} className="p-2 hover:bg-stone-200 rounded-full"><CloseIcon /></button>
           </div>
 
@@ -510,7 +548,7 @@ function App() {
             {loading ? (
               <div className="absolute inset-0 flex items-center justify-center flex-col gap-4">
                   <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-800 rounded-full animate-spin"></div>
-                  <p className="text-stone-500 font-serif animate-pulse">正在描绘风月...</p>
+                  <p className="text-stone-500 font-serif animate-pulse">{T.loadingAnalysis}</p>
               </div>
             ) : (
               <div className="space-y-6 pb-6">
@@ -536,7 +574,7 @@ function App() {
                                 ? 'bg-stone-800 text-stone-50 hover:bg-stone-700 border border-stone-800' 
                                 : 'bg-stone-50 text-stone-600 border border-stone-200 hover:bg-stone-800 hover:text-stone-50 hover:border-stone-800'}
                           `}>
-                          {isCollectedState ? '已收藏 (点击移除)' : '收藏此片羽'}
+                          {isCollectedState ? T.removeCollect : T.collectCard}
                         </button>
                     </div>
                   );
@@ -574,9 +612,11 @@ function App() {
                         ? 'bg-red-900/90 text-white border-none ring-2 ring-red-900 ring-offset-2' 
                         : 'bg-white hover:bg-red-50 border-2 border-red-800 text-red-800'}
                     `}
-                    title={isCollectedState ? "已收藏" : "收藏"}
+                    title={isCollectedState ? T.collected : T.collect}
                 >
-                    <span className="font-calligraphy text-lg select-none pt-0.5">藏</span>
+                    <span className={`${language === 'zh' ? 'font-calligraphy text-lg pt-0.5' : 'font-serif text-xs font-bold'}`}>
+                        {T.stamp}
+                    </span>
                 </button>
 
                  <div className="flex items-baseline gap-3 mb-6 mt-4">
@@ -587,7 +627,7 @@ function App() {
                  <p className="text-lg text-stone-700 mb-6 leading-loose font-serif">{currentCard.description}</p>
                  
                  <div className="pt-6 border-t border-stone-100">
-                    <span className="block text-stone-400 text-xs mb-2">文化意象</span>
+                    <span className="block text-stone-400 text-xs mb-2 uppercase tracking-wider">{T.cardCultural}</span>
                     <p className="text-stone-600 italic font-serif">"{currentCard.culturalSignificance}"</p>
                  </div>
             </div>
@@ -612,7 +652,7 @@ function App() {
                 <button onClick={goBack} className="p-2 mr-2 rounded-full hover:bg-stone-200 transition"><ChevronLeft/></button>
                 <div className="flex flex-col">
                     <span className="font-bold text-stone-900 font-serif tracking-widest">
-                    {currentLetter ? `${currentLetter.poet} 的回信` : '信笺'}
+                    {currentLetter ? `${currentLetter.poet}${T.poetLetter}` : T.letterTitle}
                     </span>
                 </div>
                 
@@ -625,9 +665,11 @@ function App() {
                             : 'bg-transparent hover:bg-red-50 border-2 border-red-800 text-red-800'}
                         ${isStampAnimating ? 'scale-110' : ''}
                         `}
-                        title={isCollectedState ? "已收藏" : "收藏"}
+                        title={isCollectedState ? T.collected : T.collect}
                     >
-                        <span className="font-calligraphy text-lg select-none pt-0.5">藏</span>
+                        <span className={`${language === 'zh' ? 'font-calligraphy text-lg pt-0.5' : 'font-serif text-xs font-bold'}`}>
+                            {T.stamp}
+                        </span>
                     </button>
                 )}
             </header>
@@ -643,16 +685,16 @@ function App() {
                         </p>
                         
                         <div className="mt-12 flex flex-col items-end gap-2">
-                            <span className="font-calligraphy text-2xl">{currentLetter.poet}</span>
+                            <span className={language === 'zh' ? 'font-calligraphy text-2xl' : 'font-serif text-xl italic'}>{currentLetter.poet}</span>
                             <div className="w-6 h-6 border border-red-800 text-red-800 flex items-center justify-center text-[10px]">
-                                {currentLetter.poet[0]}印
+                                {language === 'zh' ? `${currentLetter.poet[0]}印` : 'Seal'}
                             </div>
                         </div>
                         </div>
                     </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full text-stone-400 gap-2">
-                        <div className="animate-pulse">鸿雁传书中...</div>
+                        <div className="animate-pulse">{T.loadingLetter}</div>
                     </div>
                 )}
             </div>
@@ -660,11 +702,16 @@ function App() {
       );
   };
 
+  // Splash Screen Logic
+  if (currentScreen === AppScreen.SPLASH) {
+      return <SplashScreen onComplete={handleSplashComplete} />;
+  }
+
   return (
     <div className="w-full h-screen bg-[#f5f5f4] text-stone-800 overflow-hidden font-serif selection:bg-stone-300 selection:text-stone-900">
       <InkBackground />
       
-      {loading && <LoadingOverlay message={currentScreen === AppScreen.LETTER ? '鸿雁传书' : (poemSource === 'random' ? '神游太虚' : '寻访中')} />}
+      {loading && <LoadingOverlay message={currentScreen === AppScreen.LETTER ? T.loadingLetter : (poemSource === 'random' ? T.loadingRandom : T.loadingSearch)} />}
 
       <div className="relative z-10 h-full max-w-md mx-auto bg-[#f5f5f4] shadow-2xl overflow-hidden sm:border-x sm:border-stone-200">
         {currentScreen === AppScreen.HOME && renderHome()}

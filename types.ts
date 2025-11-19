@@ -1,16 +1,19 @@
 
+export type Language = 'zh' | 'en';
+
 export interface Poem {
   title: string;
   author: string;
-  dynasty: string;
+  dynasty: string; // Or "Period" for English
   content: string[]; // Array of lines
   analysis: string; // Brief explanation of why it matches
   context: string; // Historical context
+  language?: Language;
 }
 
 export interface KeywordCard {
   term: string;
-  category: string; // Changed from specific English union to string to support Chinese categories (地理, 风物 etc)
+  category: string; // "地理", "物候", "风土" OR "Setting", "Imagery", "Symbolism"
   description: string;
   culturalSignificance: string;
 }
@@ -27,6 +30,7 @@ export interface ChatMessage {
 }
 
 export enum AppScreen {
+  SPLASH = 'SPLASH',
   HOME = 'HOME',
   POEM_DISPLAY = 'POEM_DISPLAY',
   SHAN_HE_ZHI = 'SHAN_HE_ZHI', // The card explorer
@@ -40,4 +44,5 @@ export interface UserCollectionItem {
   data: Poem | KeywordCard | PoetLetter;
   date: string;
   sourcePrompt?: string; // The user's input feeling (if applicable)
+  language: Language;
 }

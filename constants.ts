@@ -15,8 +15,8 @@ export const INK_PATHS = [
 // Keep legacy export for compatibility if needed, pointing to the first one
 export const INK_BLOTS = INK_PATHS;
 
-// Random moods for "Serendipity" (Random Poem) feature
-export const POETIC_MOODS = [
+// Random moods for "Serendipity" (Random Poem) feature - CHINESE
+export const POETIC_MOODS_ZH = [
   "看着窗外的雨，心中有些许宁静",
   "登高望远，思念远方的故人",
   "春日迟迟，由于花开而感到喜悦",
@@ -30,3 +30,88 @@ export const POETIC_MOODS = [
   "落叶纷飞，对季节更替的感伤",
   "长河落日，天地辽阔的震撼"
 ];
+
+// Random moods for "Serendipity" (Random Poem) feature - ENGLISH
+export const POETIC_MOODS_EN = [
+  "Watching the rain, feeling a quiet peace",
+  "Looking at the moon, missing someone far away",
+  "Walking in the woods, feeling solitary but free",
+  "Thinking about the passage of time and lost youth",
+  "Feeling the overwhelming beauty of spring flowers",
+  "A sense of melancholy as autumn leaves fall",
+  "Standing by the ocean, feeling small against the vastness",
+  "Remembering a lost love with a bittersweet smile",
+  "Finding joy in a simple, quiet moment at home",
+  "The determination to face a difficult journey",
+  "A sudden burst of hope after a long winter",
+  "Contemplating the mysteries of the universe under the stars"
+];
+
+export const TRANSLATIONS = {
+  zh: {
+    title: "诗隐",
+    subtitle: "神游太虚 · 意会古今",
+    myCollection: "我的诗笺",
+    placeholder: "说说你最近的一个隐秘感受...",
+    randomBtn: "随缘一首",
+    searchBtn: "寻诗一首",
+    loadingSearch: "寻访中...",
+    loadingRandom: "神游太虚",
+    loadingLetter: "鸿雁传书",
+    loadingAnalysis: "正在描绘风月...",
+    tabPoems: "笺中诗",
+    tabCards: "诗中风月",
+    tabLetters: "书信",
+    emptyPoems: "暂无藏诗",
+    emptyCards: "未曾采撷风月",
+    emptyLetters: "尚无来信",
+    collect: "收藏",
+    collected: "已收藏",
+    collectCard: "收藏此片羽",
+    removeCollect: "已收藏 (点击移除)",
+    toastCollected: "已收藏至我的诗笺",
+    toastRemoved: "已移出诗笺",
+    resonance: "共鸣",
+    context: "背景",
+    yourFeeling: "你的心境",
+    poetLetter: "的回信",
+    letterTitle: "信笺",
+    navCards: "诗中风月",
+    navLetter: "与之共饮",
+    cardCultural: "文化意象",
+    stamp: "藏"
+  },
+  en: {
+    title: "Poem Paper",
+    subtitle: "Ink & Soul · Timeless Echoes",
+    myCollection: "My Collection",
+    placeholder: "Share a hidden feeling you have lately...",
+    randomBtn: "Serendipity",
+    searchBtn: "Find Poem",
+    loadingSearch: "Seeking Muse...",
+    loadingRandom: "Wandering Thoughts",
+    loadingLetter: "The Poet Writes...",
+    loadingAnalysis: "Analyzing Imagery...",
+    tabPoems: "Poems",
+    tabCards: "Imagery & Lore",
+    tabLetters: "Letters",
+    emptyPoems: "No collected poems yet",
+    emptyCards: "No imagery collected",
+    emptyLetters: "No letters received",
+    collect: "Save",
+    collected: "Saved",
+    collectCard: "Collect this fragment",
+    removeCollect: "Saved (Click to remove)",
+    toastCollected: "Saved to Collection",
+    toastRemoved: "Removed from Collection",
+    resonance: "Resonance",
+    context: "Context",
+    yourFeeling: "Your Feeling",
+    poetLetter: "'s Letter",
+    letterTitle: "Letter",
+    navCards: "Imagery",
+    navLetter: "Converse",
+    cardCultural: "Symbolic Meaning",
+    stamp: "Save"
+  }
+};
